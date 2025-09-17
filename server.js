@@ -11,6 +11,20 @@ app.use(express.json()); // For parsing JSON bodies
 
 // Ensure upload directory exists
 const uploadDir = path.join(__dirname, "data/branches");
+// Delete branch Excel file (API for Render.com)
+app.use(express.json()); // Ensure JSON body parsing for DELETE
+app.delete("/sync/delete-branch-excel", (req, res) => {
+  const { branchCode } = req.body;
+  if (!branchCode) return res.status(400).json({ error: "Branch code required" });
+
+  const filePath = path.join(__dirname, "data/branches", `branch_${branchCode}.xlsx`);
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+    res.json({ success: true, message: "Excel file deleted" });
+  } else {
+    res.status(404).json({ success: false, message: "File not found" });
+  }
+});
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
@@ -83,14 +97,16 @@ app.post("/sync/find-branch-by-password", async (req, res) => {
         found = {
           branchCode: branchRow.branchCode || branchRow.BranchCode || branchRow.branch_code || branchRow["Branch Code"] || file.replace(/\.xlsx$/, ""),
         };
-        fileBuffer = fs.readFileSync(filePath);
+        if (filePath && fs.existsSync(filePath)) {
+          fileBuffer = fs.readFileSync(filePath);
+        }
         break;
       }
     }
     if (found && fileBuffer) {
       res.json({ branchCode: found.branchCode, fileBuffer: fileBuffer.toString("base64") });
     } else {
-      res.status(404).json({ success: false, message: "Branch not found" });
+      res.status(404).json({ success: false, message: "Branch not found or file missing" });
     }
   } catch (err) {
     console.error("Error searching branches:", err);
