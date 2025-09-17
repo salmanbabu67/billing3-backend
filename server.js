@@ -15,26 +15,33 @@ if (!fs.existsSync(uploadDir)) {
 // Storage setup: Save Excel files in "data/branches/"
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => cb(null, req.body.branch + ".xlsx")
+  filename: (req, file, cb) => {
+    // Defensive: fallback to 'unknown' if branch missing
+    const branch = req.body.branch || (req.body['branch'] ? req.body['branch'] : 'unknown');
+    cb(null, branch + ".xlsx");
+  }
 });
 const upload = multer({ storage });
 // Upload Excel file for a branch (Admin)
-app.post("/sync/upload", upload.single("file"), (req, res) => {
+app.post("/sync/upload", upload.fields([{ name: 'file', maxCount: 1 }, { name: 'branch', maxCount: 1 }]), (req, res) => {
+  // Multer puts non-file fields in req.body
+  const branch = req.body.branch;
+  const file = req.files && req.files.file && req.files.file[0];
   console.log('[UPLOAD] Incoming upload request:', {
-    branch: req.body.branch,
-    file: req.file && req.file.originalname,
-    filePath: req.file && req.file.path
+    branch,
+    file: file && file.originalname,
+    filePath: file && file.path
   });
-  if (!req.body.branch) {
+  if (!branch) {
     console.error('[UPLOAD] Missing branch name');
     return res.status(400).json({ error: "Branch name required" });
   }
-  if (!req.file) {
+  if (!file) {
     console.error('[UPLOAD] File upload failed');
     return res.status(400).json({ error: "File upload failed" });
   }
-  console.log(`[UPLOAD] Excel uploaded for branch: ${req.body.branch} at ${req.file.path}`);
-  res.json({ message: `Excel uploaded for branch: ${req.body.branch}` });
+  console.log(`[UPLOAD] Excel uploaded for branch: ${branch} at ${file.path}`);
+  res.json({ message: `Excel uploaded for branch: ${branch}` });
 });
 // Download Excel file for a branch (User)
 app.get("/sync/download", (req, res) => {
