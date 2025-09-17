@@ -25,8 +25,13 @@ const upload = multer({ storage });
 // Upload Excel file for a branch (Admin)
 app.post("/sync/upload", upload.fields([{ name: 'file', maxCount: 1 }, { name: 'branch', maxCount: 1 }]), (req, res) => {
   // Multer puts non-file fields in req.body
-  const branch = req.body.branch;
+  let branch = req.body.branch;
   const file = req.files && req.files.file && req.files.file[0];
+  // If branch is missing, extract from filename
+  if (!branch && file && file.originalname) {
+    const match = file.originalname.match(/^branch_(BR\d{3})\.xlsx$/);
+    if (match) branch = match[1];
+  }
   console.log('[UPLOAD] Incoming upload request:', {
     branch,
     file: file && file.originalname,
