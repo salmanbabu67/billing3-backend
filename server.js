@@ -3,8 +3,11 @@ const multer = require("multer");
 const cors = require("cors");
 const path = require("path");
 const fs = require("fs");
+const xlsx = require("xlsx");
 const app = express();
 app.use(cors());
+
+app.use(express.json()); // For parsing JSON bodies
 
 // Ensure upload directory exists
 const uploadDir = path.join(__dirname, "data/branches");
@@ -55,6 +58,44 @@ app.get("/sync/download", (req, res) => {
  res.sendFile(path.resolve(`data/branches/${branch}.xlsx`), (err) => {
    if (err) res.status(404).json({ error: "Branch file not found" });
  });
+});
+
+// Find branch by password
+app.post("/sync/find-branch-by-password", async (req, res) => {
+  const { password } = req.body;
+  if (!password) return res.status(400).json({ success: false, message: "Password required" });
+
+  const branchesDir = path.join(__dirname, "data/branches");
+  let found = null;
+  let fileBuffer = null;
+
+  try {
+    const files = fs.readdirSync(branchesDir).filter(f => f.endsWith(".xlsx"));
+    for (const file of files) {
+      const filePath = path.join(branchesDir, file);
+      const workbook = xlsx.readFile(filePath);
+      const sheet = workbook.Sheets["branch_details"];
+      if (!sheet) continue;
+      const data = xlsx.utils.sheet_to_json(sheet);
+      // Assume password is in a column named 'password' (case-insensitive)
+      const branchRow = data.find(row => row.password == password || row.Password == password);
+      if (branchRow) {
+        found = {
+          branchCode: branchRow.branchCode || branchRow.BranchCode || branchRow.branch_code || branchRow["Branch Code"] || file.replace(/\.xlsx$/, ""),
+        };
+        fileBuffer = fs.readFileSync(filePath);
+        break;
+      }
+    }
+    if (found && fileBuffer) {
+      res.json({ branchCode: found.branchCode, fileBuffer: fileBuffer.toString("base64") });
+    } else {
+      res.status(404).json({ success: false, message: "Branch not found" });
+    }
+  } catch (err) {
+    console.error("Error searching branches:", err);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
 });
 // Start server
 const PORT = process.env.PORT || 5000;
