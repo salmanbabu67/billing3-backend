@@ -11,6 +11,17 @@ app.use(express.json()); // For parsing JSON bodies
 
 // Ensure upload directory exists
 const uploadDir = path.join(__dirname, "data/branches");
+// List all Excel files present in backend
+app.get("/sync/list-excel-files", (req, res) => {
+  const dirPath = path.join(__dirname, "data/branches");
+  let files = [];
+  try {
+    files = fs.readdirSync(dirPath).filter(f => f.endsWith(".xlsx"));
+    res.json({ files });
+  } catch (err) {
+    res.status(500).json({ error: "Unable to list files", details: err.message });
+  }
+});
 // Delete branch Excel file (API for Render.com)
 app.use(express.json()); // Ensure JSON body parsing for DELETE
 app.delete("/sync/delete-branch-excel", (req, res) => {
@@ -34,8 +45,10 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
     // Defensive: fallback to 'unknown' if branch missing
-    const branch = req.body.branch || (req.body['branch'] ? req.body['branch'] : 'unknown');
-    cb(null, branch + ".xlsx");
+    let branch = req.body.branch || (req.body['branch'] ? req.body['branch'] : 'unknown');
+    // Remove any prefix if user sends branch_BR001
+    branch = branch.replace(/^branch_/, '');
+    cb(null, `branch_${branch}.xlsx`);
   }
 });
 const upload = multer({ storage });
@@ -63,7 +76,14 @@ app.post("/sync/upload", upload.fields([{ name: 'file', maxCount: 1 }, { name: '
     return res.status(400).json({ error: "File upload failed" });
   }
   console.log(`[UPLOAD] Excel uploaded for branch: ${branch} at ${file.path}`);
-  res.json({ message: `Excel uploaded for branch: ${branch}` });
+  // List files in uploadDir after upload
+  try {
+    const filesAfter = fs.readdirSync(uploadDir);
+    console.log('[UPLOAD] Files in uploadDir after upload:', filesAfter);
+  } catch (err) {
+    console.error('[UPLOAD] Error reading uploadDir:', err);
+  }
+  res.json({ message: `Excel uploaded for branch: ${branch}`, filePath: file.path });
 });
 // Download Excel file for a branch (User)
 app.get("/sync/download", (req, res) => {
